@@ -5,8 +5,16 @@ public class PlayerController : MonoBehaviour
     public Vector2Int playerPos;
     public GridManager gridManager;
 
+    void Awake()
+    {
+        if (gridManager == null)
+            gridManager = FindObjectOfType<GridManager>();
+    }
+
     void Update()
     {
+        if (gridManager == null || gridManager.grid == null) return;
+
         if (Input.GetKeyDown(KeyCode.UpArrow)) TryMove(Vector2Int.up);
         if (Input.GetKeyDown(KeyCode.DownArrow)) TryMove(Vector2Int.down);
         if (Input.GetKeyDown(KeyCode.LeftArrow)) TryMove(Vector2Int.left);
@@ -16,20 +24,27 @@ public class PlayerController : MonoBehaviour
     void TryMove(Vector2Int dir)
     {
         Vector2Int targetPos = playerPos + dir;
+
+        if (!IsInsideGrid(targetPos)) return;
+
         TileType targetTile = gridManager.grid[targetPos.x, targetPos.y];
 
         if (targetTile == TileType.Empty || targetTile == TileType.Exit)
         {
             MovePlayer(targetPos);
+            gridManager.CheckMatches();
         }
         else if (targetTile == TileType.Box)
         {
-            // Try to push box
             Vector2Int boxTarget = targetPos + dir;
+
+            if (!IsInsideGrid(boxTarget)) return;
+
             if (gridManager.grid[boxTarget.x, boxTarget.y] == TileType.Empty)
             {
-                MoveBox(targetPos, boxTarget);
+                gridManager.MoveBox(targetPos, boxTarget);
                 MovePlayer(targetPos);
+                gridManager.CheckMatches();
             }
         }
     }
@@ -40,13 +55,11 @@ public class PlayerController : MonoBehaviour
         transform.position = new Vector3(newPos.x, newPos.y, 0);
     }
 
-    void MoveBox(Vector2Int currentPos, Vector2Int newPos)
+    private bool IsInsideGrid(Vector2Int pos)
     {
-        gridManager.grid[newPos.x, newPos.y] = TileType.Box;
-        gridManager.grid[currentPos.x, currentPos.y] = TileType.Empty;
-        
-        // Move box GameObject
-        GameObject boxGO = gridManager.GetBoxAtPosition(currentPos);
-        boxGO.transform.position = new Vector3(newPos.x, newPos.y, 0);
+        if (pos.x < 0 || pos.x >= gridManager.width ||
+            pos.y < 0 || pos.y >= gridManager.height)
+            return false;
+        return true;
     }
 }
