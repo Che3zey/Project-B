@@ -150,78 +150,6 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!1001 &1654177612
-PrefabInstance:
-  m_ObjectHideFlags: 0
-  serializedVersion: 2
-  m_Modification:
-    serializedVersion: 3
-    m_TransformParent: {fileID: 0}
-    m_Modifications:
-    - target: {fileID: 3032474309140185513, guid: f0f050bd1dfb99a44a54acaeb9c8a3db, type: 3}
-      propertyPath: m_Name
-      value: Player
-      objectReference: {fileID: 0}
-    - target: {fileID: 3847722026693481472, guid: f0f050bd1dfb99a44a54acaeb9c8a3db, type: 3}
-      propertyPath: gridManager
-      value: 
-      objectReference: {fileID: 1892471069}
-    - target: {fileID: 7214059242132392171, guid: f0f050bd1dfb99a44a54acaeb9c8a3db, type: 3}
-      propertyPath: m_LocalPosition.x
-      value: -1.65685
-      objectReference: {fileID: 0}
-    - target: {fileID: 7214059242132392171, guid: f0f050bd1dfb99a44a54acaeb9c8a3db, type: 3}
-      propertyPath: m_LocalPosition.y
-      value: 1.031
-      objectReference: {fileID: 0}
-    - target: {fileID: 7214059242132392171, guid: f0f050bd1dfb99a44a54acaeb9c8a3db, type: 3}
-      propertyPath: m_LocalPosition.z
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 7214059242132392171, guid: f0f050bd1dfb99a44a54acaeb9c8a3db, type: 3}
-      propertyPath: m_LocalRotation.w
-      value: 1
-      objectReference: {fileID: 0}
-    - target: {fileID: 7214059242132392171, guid: f0f050bd1dfb99a44a54acaeb9c8a3db, type: 3}
-      propertyPath: m_LocalRotation.x
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 7214059242132392171, guid: f0f050bd1dfb99a44a54acaeb9c8a3db, type: 3}
-      propertyPath: m_LocalRotation.y
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 7214059242132392171, guid: f0f050bd1dfb99a44a54acaeb9c8a3db, type: 3}
-      propertyPath: m_LocalRotation.z
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 7214059242132392171, guid: f0f050bd1dfb99a44a54acaeb9c8a3db, type: 3}
-      propertyPath: m_LocalEulerAnglesHint.x
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 7214059242132392171, guid: f0f050bd1dfb99a44a54acaeb9c8a3db, type: 3}
-      propertyPath: m_LocalEulerAnglesHint.y
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 7214059242132392171, guid: f0f050bd1dfb99a44a54acaeb9c8a3db, type: 3}
-      propertyPath: m_LocalEulerAnglesHint.z
-      value: 0
-      objectReference: {fileID: 0}
-    m_RemovedComponents: []
-    m_RemovedGameObjects: []
-    m_AddedGameObjects: []
-    m_AddedComponents: []
-  m_SourcePrefab: {fileID: 100100000, guid: f0f050bd1dfb99a44a54acaeb9c8a3db, type: 3}
---- !u!114 &1892471069 stripped
-MonoBehaviour:
-  m_CorrespondingSourceObject: {fileID: 6966804017905039637, guid: 1af9d9ab0caa75e44814aa256082a3a2, type: 3}
-  m_PrefabInstance: {fileID: 4081259648104030002}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 0}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 33c905c9dcf3259428e5e280a2795764, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::GridManager
 --- !u!1001 &4081259648104030002
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -278,6 +206,26 @@ PrefabInstance:
       propertyPath: tileParent
       value: 
       objectReference: {fileID: 1207358128}
+    - target: {fileID: 6966804017905039637, guid: 1af9d9ab0caa75e44814aa256082a3a2, type: 3}
+      propertyPath: redBoxCount
+      value: 3
+      objectReference: {fileID: 0}
+    - target: {fileID: 6966804017905039637, guid: 1af9d9ab0caa75e44814aa256082a3a2, type: 3}
+      propertyPath: blueBoxCount
+      value: 3
+      objectReference: {fileID: 0}
+    - target: {fileID: 6966804017905039637, guid: 1af9d9ab0caa75e44814aa256082a3a2, type: 3}
+      propertyPath: greenBoxCount
+      value: 3
+      objectReference: {fileID: 0}
+    - target: {fileID: 6966804017905039637, guid: 1af9d9ab0caa75e44814aa256082a3a2, type: 3}
+      propertyPath: totalBoxCount
+      value: 9
+      objectReference: {fileID: 0}
+    - target: {fileID: 6966804017905039637, guid: 1af9d9ab0caa75e44814aa256082a3a2, type: 3}
+      propertyPath: initialBoxCount
+      value: 5
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
@@ -288,5 +236,4 @@ SceneRoots:
   m_ObjectHideFlags: 0
   m_Roots:
   - {fileID: 4081259648104030002}
-  - {fileID: 1654177612}
   - {fileID: 1207358128}

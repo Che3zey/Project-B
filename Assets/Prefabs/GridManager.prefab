@@ -46,6 +46,13 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::GridManager
   width: 8
   height: 8
-  boxPrefab: {fileID: 4186323953403647414, guid: c1a7fac23633cb74ba3a666636902994, type: 3}
+  redBoxPrefab: {fileID: 4186323953403647414, guid: c1a7fac23633cb74ba3a666636902994, type: 3}
+  blueBoxPrefab: {fileID: 4488317200196292667, guid: 981d0b620ef51664c8c27778efd17811, type: 3}
+  greenBoxPrefab: {fileID: 1927391794973796719, guid: ce3ee64efc3240d4d8a36721665ed1c0, type: 3}
   tilePrefab: {fileID: 8299388752579179448, guid: 6e8de89823842f34fb7323ceb0d2b814, type: 3}
+  playerPrefab: {fileID: 3032474309140185513, guid: f0f050bd1dfb99a44a54acaeb9c8a3db, type: 3}
+  goalPrefab: {fileID: 5394169496307292687, guid: cd9b0ad2ec83d39429e2553b18599a97, type: 3}
   tileParent: {fileID: 7404246348740176780, guid: adb876d5f0ac841409e92a8356be7090, type: 3}
+  initialBoxCount: 3
+  playerSpawn: {x: 0, y: 0}
+  goalZone: {x: 0, y: 0}
