@@ -12,9 +12,9 @@ public enum TileType
 
 public class GridManager : MonoBehaviour
 {
-    [Header("Grid Settings")]
-    public int width = 8;
-    public int height = 8;
+    [Header("Grid Settings (8–15)")]
+    [Range(8, 15)] public int width = 8;
+    [Range(8, 15)] public int height = 8;
     public TileType[,] grid;
 
     [Header("Prefabs")]
@@ -34,20 +34,24 @@ public class GridManager : MonoBehaviour
     private Dictionary<Vector2Int, GameObject> boxDict = new Dictionary<Vector2Int, GameObject>();
     private TileType[] boxTypes = { TileType.RedBox, TileType.BlueBox, TileType.GreenBox };
 
-    void OnEnable()
-    {
-        InitializeGrid();
-    }
+    [Header("Generation Tuning")]
+    public int minClusters = 2;
+    public int maxClusters = 4;
+    [Range(0f, 0.3f)] public float fillerDensity = 0.1f;
+    public int safeRadius = 1; // tiles around player spawn that stay empty
+
+    void OnEnable() => InitializeGrid();
 
     void Start()
     {
-        GenerateCheckerboard();
-        GenerateOutcrops();
-        SpawnPlayer();
-        SpawnGoal();
-        GenerateProceduralPuzzle();
+        width = Mathf.Clamp(width, 8, 15);
+        height = Mathf.Clamp(height, 8, 15);
+        GenerateLevel();
     }
 
+    // --------------------------------------------------------------------
+    // GRID SETUP
+    // --------------------------------------------------------------------
     private void InitializeGrid()
     {
         grid = new TileType[width, height];
@@ -59,20 +63,70 @@ public class GridManager : MonoBehaviour
     private void GenerateCheckerboard()
     {
         if (tilePrefab == null) return;
+
         if (tileParent == null)
         {
             GameObject parentGO = new GameObject("TilesParent");
             tileParent = parentGO.transform;
         }
 
+        for (int i = tileParent.childCount - 1; i >= 0; i--)
+            DestroyImmediate(tileParent.GetChild(i).gameObject);
+
         for (int x = 0; x < width; x++)
             for (int y = 0; y < height; y++)
             {
-                Color color = ((x + y) % 2 == 0) ? new Color(0.8f, 0.8f, 0.8f) : new Color(0.6f, 0.6f, 0.6f);
-                GameObject tile = Instantiate(tilePrefab, new Vector3(x, y, 1), Quaternion.identity, tileParent);
+                Color color = ((x + y) % 2 == 0)
+                    ? new Color(0.86f, 0.86f, 0.86f)
+                    : new Color(0.7f, 0.7f, 0.7f);
+                GameObject tile = Instantiate(tilePrefab, new Vector3(x, y, 1f), Quaternion.identity, tileParent);
                 SpriteRenderer sr = tile.GetComponent<SpriteRenderer>();
                 if (sr != null) sr.color = color;
             }
+    }
+
+    // --------------------------------------------------------------------
+    // MAIN LEVEL GENERATION
+    // --------------------------------------------------------------------
+    public void GenerateLevel()
+    {
+        ClearAllBoxesAndObjects();
+        InitializeGrid();
+        GenerateCheckerboard();
+        GenerateOutcrops();
+        SpawnPlayer();
+        SpawnGoal();
+
+        int attempts = 0;
+        const int maxAttempts = 8;
+        bool success = false;
+
+        while (!success && attempts < maxAttempts)
+        {
+            ClearAllBoxesOnly();
+
+            // Generate a jagged path to ensure the player can reach the goal
+            List<Vector2Int> path = GenerateJaggedPath(playerSpawn, goalZone);
+
+            // Place clusters of boxes along the path
+            int clusterCount = Random.Range(minClusters, maxClusters + 1);
+            PlaceClustersAlongPath(path, clusterCount);
+
+            // Place filler boxes throughout the grid
+            PlaceFillerBoxes(path);
+
+            if (AtLeastOnePushableBoxExists() && !AllBoxesOnEdges())
+                success = true;
+            else
+                attempts++;
+        }
+
+        if (!success)
+            Debug.LogWarning("Procedural generator may not fully satisfy constraints; level may be simple.");
+
+        // Add border boxes, then block the goal properly
+        AddBorderBoxes();
+        BlockGoalAccess();
     }
 
     private void GenerateOutcrops()
@@ -98,18 +152,24 @@ public class GridManager : MonoBehaviour
     public void SpawnPlayer()
     {
         if (playerPrefab == null) return;
-        GameObject playerGO = Instantiate(playerPrefab, new Vector3(playerSpawn.x, playerSpawn.y, 0), Quaternion.identity);
+        GameObject playerGO = Instantiate(playerPrefab, new Vector3(playerSpawn.x, playerSpawn.y, 0f), Quaternion.identity);
         PlayerController pc = playerGO.GetComponent<PlayerController>();
-        pc.gridManager = this;
-        pc.playerPos = playerSpawn;
+        if (pc != null)
+        {
+            pc.gridManager = this;
+            pc.playerPos = playerSpawn;
+        }
     }
 
     public void SpawnGoal()
     {
         if (goalPrefab == null) return;
-        Instantiate(goalPrefab, new Vector3(goalZone.x, goalZone.y, 0), Quaternion.identity);
+        Instantiate(goalPrefab, new Vector3(goalZone.x, goalZone.y, 0f), Quaternion.identity);
     }
 
+    // --------------------------------------------------------------------
+    // BOX MANAGEMENT
+    // --------------------------------------------------------------------
     public void AddBox(Vector2Int pos, GameObject box, TileType type)
     {
         boxDict[pos] = box;
@@ -126,28 +186,200 @@ public class GridManager : MonoBehaviour
         grid[pos.x, pos.y] = TileType.Empty;
     }
 
-    public GameObject GetBoxAtPosition(Vector2Int pos)
+    public void ClearAllBoxesOnly()
     {
-        if (boxDict.ContainsKey(pos)) return boxDict[pos];
-        return null;
+        if (boxDict == null) return;
+
+        foreach (var kvp in new Dictionary<Vector2Int, GameObject>(boxDict))
+            RemoveBox(kvp.Key);
     }
 
-    public void MoveBox(Vector2Int from, Vector2Int to)
+    public void ClearAllBoxesAndObjects()
     {
-        if (!boxDict.ContainsKey(from)) return;
+        ClearAllBoxesOnly();
+        if (tileParent != null)
+            foreach (Transform child in tileParent)
+                Destroy(child.gameObject);
+    }
+
+    public bool MoveBox(Vector2Int from, Vector2Int to)
+    {
+        if (!boxDict.ContainsKey(from)) return false;
+        if (!IsInsideGrid(to) || !IsEmpty(to)) return false;
+
         GameObject box = boxDict[from];
-        box.transform.position = new Vector3(to.x, to.y, 0);
+        TileType type = grid[from.x, from.y];
+
         boxDict.Remove(from);
         boxDict[to] = box;
 
-        grid[to.x, to.y] = grid[from.x, from.y];
         grid[from.x, from.y] = TileType.Empty;
+        grid[to.x, to.y] = type;
+
+        box.transform.position = new Vector3(to.x, to.y, 0f);
+
+        return true;
     }
 
-    public bool IsEmpty(Vector2Int pos)
+    // --------------------------------------------------------------------
+    // PATH & CLUSTERS
+    // --------------------------------------------------------------------
+    private List<Vector2Int> GenerateJaggedPath(Vector2Int start, Vector2Int end)
     {
-        if (pos.x < 0 || pos.x >= width || pos.y < 0 || pos.y >= height) return false;
-        return grid[pos.x, pos.y] == TileType.Empty;
+        List<Vector2Int> path = new List<Vector2Int>();
+        Vector2Int cur = new Vector2Int(Mathf.Clamp(start.x, 0, width - 1), Mathf.Clamp(start.y, 0, height - 1));
+        Vector2Int target = new Vector2Int(Mathf.Clamp(end.x, 0, width - 1), Mathf.Clamp(end.y, 0, height - 1));
+        path.Add(cur);
+
+        int twists = Random.Range(5, 9);
+        for (int i = 0; i < twists; i++)
+        {
+            Vector2Int dir = Random.value > 0.5f ? Vector2Int.right : Vector2Int.up;
+            if (Random.value > 0.5f) dir *= -1;
+
+            int steps = Random.Range(2, 4);
+            for (int s = 0; s < steps; s++)
+            {
+                cur += dir;
+                cur.x = Mathf.Clamp(cur.x, 0, width - 1);
+                cur.y = Mathf.Clamp(cur.y, 0, height - 1);
+                if (!path.Contains(cur)) path.Add(cur);
+                if (cur == target) return path;
+            }
+        }
+        path.Add(target);
+        return path;
+    }
+
+    private void PlaceClustersAlongPath(List<Vector2Int> path, int clusterCount)
+    {
+        ShuffleList(path);
+        for (int i = 0; i < clusterCount; i++)
+        {
+            if (i >= path.Count) break;
+            Vector2Int center = path[i];
+            int clusterSize = Random.Range(3, 5);
+
+            for (int j = 0; j < clusterSize; j++)
+            {
+                Vector2Int offset = new Vector2Int(Random.Range(-1, 2), Random.Range(-1, 2));
+                Vector2Int pos = center + offset;
+                if (IsInsideGrid(pos) && IsEmpty(pos) && Vector2Int.Distance(pos, playerSpawn) > safeRadius)
+                {
+                    TileType type = GetRandomBoxTypeAvoidMatches(pos);
+                    GameObject prefab = GetPrefabForType(type);
+                    GameObject box = Instantiate(prefab, new Vector3(pos.x, pos.y, 0), Quaternion.identity);
+                    AddBox(pos, box, type);
+                }
+            }
+        }
+    }
+
+    private void PlaceFillerBoxes(List<Vector2Int> path)
+    {
+        for (int x = 1; x < width - 1; x++)
+            for (int y = 1; y < height - 1; y++)
+            {
+                Vector2Int pos = new Vector2Int(x, y);
+                if (IsEmpty(pos) && Random.value < fillerDensity && Vector2Int.Distance(pos, playerSpawn) > safeRadius)
+                {
+                    TileType type = GetRandomBoxTypeAvoidMatches(pos);
+                    GameObject prefab = GetPrefabForType(type);
+                    GameObject box = Instantiate(prefab, new Vector3(pos.x, pos.y, 0), Quaternion.identity);
+                    AddBox(pos, box, type);
+                }
+            }
+    }
+
+    // --------------------------------------------------------------------
+    // MATCH-3 DETECTION
+    // --------------------------------------------------------------------
+    public List<Vector2Int> CheckMatches()
+    {
+        HashSet<Vector2Int> toClear = new HashSet<Vector2Int>();
+
+        // Horizontal
+        for (int y = 0; y < height; y++)
+        {
+            int runLength = 1;
+            for (int x = 1; x < width; x++)
+            {
+                if (grid[x, y] != TileType.Empty && grid[x, y] == grid[x - 1, y])
+                    runLength++;
+                else
+                    runLength = 1;
+
+                if (runLength >= 3)
+                    for (int k = 0; k < runLength; k++)
+                        toClear.Add(new Vector2Int(x - k, y));
+            }
+        }
+
+        // Vertical
+        for (int x = 0; x < width; x++)
+        {
+            int runLength = 1;
+            for (int y = 1; y < height; y++)
+            {
+                if (grid[x, y] != TileType.Empty && grid[x, y] == grid[x, y - 1])
+                    runLength++;
+                else
+                    runLength = 1;
+
+                if (runLength >= 3)
+                    for (int k = 0; k < runLength; k++)
+                        toClear.Add(new Vector2Int(x, y - k));
+            }
+        }
+
+        return new List<Vector2Int>(toClear);
+    }
+
+    public void ClearMatches()
+    {
+        List<Vector2Int> matches = CheckMatches();
+        foreach (Vector2Int pos in matches)
+            RemoveBox(pos);
+    }
+
+    // --------------------------------------------------------------------
+    // UTILITY
+    // --------------------------------------------------------------------
+    private void ShuffleList<T>(List<T> list)
+    {
+        for (int i = 0; i < list.Count; i++)
+        {
+            T temp = list[i];
+            int rand = Random.Range(i, list.Count);
+            list[i] = list[rand];
+            list[rand] = temp;
+        }
+    }
+
+    private TileType GetRandomBoxTypeAvoidMatches(Vector2Int pos)
+    {
+        List<TileType> valid = new List<TileType>(boxTypes);
+        foreach (TileType t in boxTypes)
+            if (WouldCauseMatch(pos, t))
+                valid.Remove(t);
+        return valid.Count > 0 ? valid[Random.Range(0, valid.Count)] : boxTypes[Random.Range(0, boxTypes.Length)];
+    }
+
+    private bool WouldCauseMatch(Vector2Int pos, TileType type)
+    {
+        int horiz = 1;
+        for (int dx = -1; dx >= -2 && pos.x + dx >= 0; dx--)
+            if (grid[pos.x + dx, pos.y] == type) horiz++; else break;
+        for (int dx = 1; dx <= 2 && pos.x + dx < width; dx++)
+            if (grid[pos.x + dx, pos.y] == type) horiz++; else break;
+
+        int vert = 1;
+        for (int dy = -1; dy >= -2 && pos.y + dy >= 0; dy--)
+            if (grid[pos.x, pos.y + dy] == type) vert++; else break;
+        for (int dy = 1; dy <= 2 && pos.y + dy < height; dy++)
+            if (grid[pos.x, pos.y + dy] == type) vert++; else break;
+
+        return horiz >= 3 || vert >= 3;
     }
 
     private GameObject GetPrefabForType(TileType type)
@@ -161,214 +393,84 @@ public class GridManager : MonoBehaviour
         }
     }
 
-    // ------------------------------
-    // Procedural Puzzle Generator
-    // ------------------------------
-    private void GenerateProceduralPuzzle()
-{
-    // 1️⃣ Generate a clear path vector
-    List<Vector2Int> path = GeneratePath(playerSpawn, goalZone);
-
-    // 2️⃣ Determine number of blocking clusters (2-3)
-    int clusterCount = Random.Range(2, 4);
-
-    // Split path into cluster positions
-    List<Vector2Int> clusterPositions = new List<Vector2Int>();
-    int pathStep = Mathf.Max(1, path.Count / (clusterCount + 1));
-    for (int i = 1; i <= clusterCount; i++)
+    private bool IsEmpty(Vector2Int pos)
     {
-        clusterPositions.Add(path[i * pathStep]);
+        if (!IsInsideGrid(pos)) return false;
+        return grid[pos.x, pos.y] == TileType.Empty;
     }
 
-    // 3️⃣ Place blocking clusters
-    foreach (Vector2Int center in clusterPositions)
+    private bool IsInsideGrid(Vector2Int pos)
     {
-        PlaceCluster(center);
+        return pos.x >= 0 && pos.x < width && pos.y >= 0 && pos.y < height;
     }
 
-    // 4️⃣ Add extra side boxes
-    int extraBoxes = Random.Range(2, 5);
-    int attempts = 0;
-    while (extraBoxes > 0 && attempts < 50)
+    private bool AllBoxesOnEdges()
     {
-        Vector2Int pos = new Vector2Int(Random.Range(0, width), Random.Range(0, height));
-        if (IsEmpty(pos) && !path.Contains(pos) && !IsEdgeTile(pos))
+        foreach (var kvp in boxDict)
         {
-            TileType type = GetRandomBoxTypeAvoidMatches(pos);
-            GameObject prefab = GetPrefabForType(type);
-            GameObject boxGO = Instantiate(prefab, new Vector3(pos.x, pos.y, 0), Quaternion.identity);
-            AddBox(pos, boxGO, type);
-            extraBoxes--;
+            Vector2Int pos = kvp.Key;
+            if (pos.x > 0 && pos.x < width - 1 && pos.y > 0 && pos.y < height - 1)
+                return false;
         }
-        attempts++;
-    }
-}
-
-// ------------------------------
-// Place a 3-box cluster around a center tile
-// ------------------------------
-private void PlaceCluster(Vector2Int center)
-{
-    List<Vector2Int> clusterTiles = new List<Vector2Int> { center };
-
-    // Add 1-2 adjacent tiles (orthogonal)
-    Vector2Int[] dirs = { Vector2Int.up, Vector2Int.down, Vector2Int.left, Vector2Int.right };
-    ShuffleArray(dirs);
-
-    for (int i = 0; i < 2; i++)
-    {
-        Vector2Int pos = center + dirs[i];
-        if (IsInsideGrid(pos) && IsEmpty(pos) && !clusterTiles.Contains(pos))
-            clusterTiles.Add(pos);
+        return true;
     }
 
-    // Assign same type for horizontal/vertical match
-    TileType type = boxTypes[Random.Range(0, boxTypes.Length)];
-
-    foreach (Vector2Int pos in clusterTiles)
+    private bool AtLeastOnePushableBoxExists()
     {
-        GameObject prefab = GetPrefabForType(type);
-        GameObject boxGO = Instantiate(prefab, new Vector3(pos.x, pos.y, 0), Quaternion.identity);
-        AddBox(pos, boxGO, type);
-    }
-}
-
-// ------------------------------
-// Helpers
-// ------------------------------
-private bool IsInsideGrid(Vector2Int pos)
-{
-    return pos.x >= 0 && pos.x < width && pos.y >= 0 && pos.y < height;
-}
-
-private void ShuffleArray(Vector2Int[] array)
-{
-    for (int i = array.Length - 1; i > 0; i--)
-    {
-        int j = Random.Range(0, i + 1);
-        Vector2Int temp = array[i];
-        array[i] = array[j];
-        array[j] = temp;
-    }
-}
-
-
-    // Generate a simple straight-ish path between start and end
-    private List<Vector2Int> GeneratePath(Vector2Int start, Vector2Int end)
-    {
-        List<Vector2Int> path = new List<Vector2Int>();
-
-        int x = Mathf.Clamp(start.x + 1, 0, width - 1);
-        int y = Mathf.Clamp(start.y + 1, 0, height - 1);
-
-        while (x != Mathf.Clamp(end.x - 1, 0, width - 1) || y != Mathf.Clamp(end.y - 1, 0, height - 1))
+        foreach (var kvp in boxDict)
         {
-            path.Add(new Vector2Int(x, y));
-            if (x != Mathf.Clamp(end.x - 1, 0, width - 1) && Random.value > 0.5f)
-                x += x < end.x ? 1 : -1;
-            else if (y != Mathf.Clamp(end.y - 1, 0, height - 1))
-                y += y < end.y ? 1 : -1;
-        }
-
-        return path;
-    }
-
-    private bool IsEdgeTile(Vector2Int pos)
-    {
-        return pos.x == 0 || pos.x == width - 1 || pos.y == 0 || pos.y == height - 1;
-    }
-
-    private TileType GetRandomBoxTypeAvoidMatches(Vector2Int pos)
-    {
-        // Avoid creating initial matches
-        List<TileType> validTypes = new List<TileType>(boxTypes);
-        foreach (TileType type in boxTypes)
-        {
-            if (WouldCauseMatch(pos, type))
-                validTypes.Remove(type);
-        }
-
-        if (validTypes.Count == 0) validTypes.Add(boxTypes[Random.Range(0, boxTypes.Length)]);
-        return validTypes[Random.Range(0, validTypes.Count)];
-    }
-
-    private bool WouldCauseMatch(Vector2Int pos, TileType type)
-    {
-        // Horizontal
-        int countH = 1;
-        if (pos.x >= 2)
-        {
-            if (grid[pos.x - 1, pos.y] == type && grid[pos.x - 2, pos.y] == type)
-                return true;
-        }
-        // Vertical
-        if (pos.y >= 2)
-        {
-            if (grid[pos.x, pos.y - 1] == type && grid[pos.x, pos.y - 2] == type)
-                return true;
+            Vector2Int pos = kvp.Key;
+            foreach (Vector2Int dir in new Vector2Int[] { Vector2Int.up, Vector2Int.down, Vector2Int.left, Vector2Int.right })
+            {
+                Vector2Int next = pos + dir;
+                if (IsInsideGrid(next) && IsEmpty(next))
+                    return true;
+            }
         }
         return false;
     }
 
-    // ------------------------------
-    // Match-3 detection
-    // ------------------------------
-    public void CheckMatches()
+    // --------------------------------------------------------------------
+    // EDGE + GOAL BLOCKING
+    // --------------------------------------------------------------------
+    private void AddBorderBoxes()
     {
-        List<Vector2Int> boxesToClear = new List<Vector2Int>();
-
-        // Horizontal
-        for (int y = 0; y < height; y++)
-        {
-            int count = 1;
-            for (int x = 1; x < width; x++)
-            {
-                TileType current = grid[x, y];
-                TileType previous = grid[x - 1, y];
-
-                if (current != TileType.Empty && current == previous)
-                    count++;
-                else
-                {
-                    if (count >= 3)
-                        for (int i = x - count; i < x; i++)
-                            boxesToClear.Add(new Vector2Int(i, y));
-                    count = 1;
-                }
-            }
-            if (count >= 3)
-                for (int i = width - count; i < width; i++)
-                    boxesToClear.Add(new Vector2Int(i, y));
-        }
-
-        // Vertical
         for (int x = 0; x < width; x++)
-        {
-            int count = 1;
-            for (int y = 1; y < height; y++)
+            for (int y = 0; y < height; y++)
             {
-                TileType current = grid[x, y];
-                TileType previous = grid[x, y - 1];
-
-                if (current != TileType.Empty && current == previous)
-                    count++;
-                else
+                bool isEdge = (x == 0 || y == 0 || x == width - 1 || y == height - 1);
+                Vector2Int pos = new Vector2Int(x, y);
+                if (isEdge && IsEmpty(pos) && Vector2Int.Distance(pos, playerSpawn) > safeRadius && Random.value < 0.65f)
                 {
-                    if (count >= 3)
-                        for (int i = y - count; i < y; i++)
-                            boxesToClear.Add(new Vector2Int(x, i));
-                    count = 1;
+                    TileType type = GetRandomBoxTypeAvoidMatches(pos);
+                    GameObject prefab = GetPrefabForType(type);
+                    GameObject box = Instantiate(prefab, new Vector3(x, y, 0), Quaternion.identity);
+                    AddBox(pos, box, type);
                 }
             }
-            if (count >= 3)
-                for (int i = height - count; i < height; i++)
-                    boxesToClear.Add(new Vector2Int(x, i));
-        }
+    }
 
-        foreach (Vector2Int pos in boxesToClear)
-            RemoveBox(pos);
+    private void BlockGoalAccess()
+    {
+        // Determine the entry tile immediately adjacent to the goal
+        Vector2Int goalEntry = goalZone;
+        if (goalZone.x < 0) goalEntry = new Vector2Int(0, goalZone.y);
+        else if (goalZone.x >= width) goalEntry = new Vector2Int(width - 1, goalZone.y);
+        else if (goalZone.y < 0) goalEntry = new Vector2Int(goalZone.x, 0);
+        else if (goalZone.y >= height) goalEntry = new Vector2Int(goalZone.x, height - 1);
 
-        if (boxesToClear.Count > 0)
-            Debug.Log($"Cleared {boxesToClear.Count} boxes!");
+        // Place a small cluster of boxes around the goal entry
+        for (int dx = -1; dx <= 1; dx++)
+            for (int dy = -1; dy <= 1; dy++)
+            {
+                Vector2Int pos = goalEntry + new Vector2Int(dx, dy);
+                if (IsInsideGrid(pos) && IsEmpty(pos) && Vector2Int.Distance(pos, playerSpawn) > safeRadius)
+                {
+                    TileType type = GetRandomBoxTypeAvoidMatches(pos);
+                    GameObject prefab = GetPrefabForType(type);
+                    GameObject box = Instantiate(prefab, new Vector3(pos.x, pos.y, 0f), Quaternion.identity);
+                    AddBox(pos, box, type);
+                }
+            }
     }
 }

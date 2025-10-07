@@ -51,7 +51,7 @@ public class PlayerController : MonoBehaviour
         }
 
         // Check for match-3 after every move
-        gridManager.CheckMatches();
+        gridManager.ClearMatches();
     }
 
     void MovePlayer(Vector2Int newPos)
