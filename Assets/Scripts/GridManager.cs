@@ -189,7 +189,6 @@ public class GridManager : MonoBehaviour
     public void ClearAllBoxesOnly()
     {
         if (boxDict == null) return;
-
         foreach (var kvp in new Dictionary<Vector2Int, GameObject>(boxDict))
             RemoveBox(kvp.Key);
     }
@@ -393,18 +392,21 @@ public class GridManager : MonoBehaviour
         }
     }
 
-    private bool IsEmpty(Vector2Int pos)
+    // --------------------------------------------------------------------
+    // PUBLIC GRID QUERIES
+    // --------------------------------------------------------------------
+    public bool IsEmpty(Vector2Int pos)
     {
         if (!IsInsideGrid(pos)) return false;
         return grid[pos.x, pos.y] == TileType.Empty;
     }
 
-    private bool IsInsideGrid(Vector2Int pos)
+    public bool IsInsideGrid(Vector2Int pos)
     {
         return pos.x >= 0 && pos.x < width && pos.y >= 0 && pos.y < height;
     }
 
-    private bool AllBoxesOnEdges()
+    public bool AllBoxesOnEdges()
     {
         foreach (var kvp in boxDict)
         {
@@ -415,7 +417,7 @@ public class GridManager : MonoBehaviour
         return true;
     }
 
-    private bool AtLeastOnePushableBoxExists()
+    public bool AtLeastOnePushableBoxExists()
     {
         foreach (var kvp in boxDict)
         {
@@ -452,14 +454,12 @@ public class GridManager : MonoBehaviour
 
     private void BlockGoalAccess()
     {
-        // Determine the entry tile immediately adjacent to the goal
         Vector2Int goalEntry = goalZone;
         if (goalZone.x < 0) goalEntry = new Vector2Int(0, goalZone.y);
         else if (goalZone.x >= width) goalEntry = new Vector2Int(width - 1, goalZone.y);
         else if (goalZone.y < 0) goalEntry = new Vector2Int(goalZone.x, 0);
         else if (goalZone.y >= height) goalEntry = new Vector2Int(goalZone.x, height - 1);
 
-        // Place a small cluster of boxes around the goal entry
         for (int dx = -1; dx <= 1; dx++)
             for (int dy = -1; dy <= 1; dy++)
             {
@@ -473,11 +473,11 @@ public class GridManager : MonoBehaviour
                 }
             }
     }
+
     public void RestartLevel()
     {
         Debug.Log("🔁 Restarting level...");
 
-        // Destroy existing player & goal if they exist
         PlayerController existingPlayer = FindObjectOfType<PlayerController>();
         if (existingPlayer != null)
             Destroy(existingPlayer.gameObject);
@@ -486,11 +486,7 @@ public class GridManager : MonoBehaviour
         if (existingGoal != null)
             Destroy(existingGoal);
 
-        // Clear current grid state
         ClearAllBoxesAndObjects();
-
-        // Regenerate a new level
         GenerateLevel();
     }
-
 }

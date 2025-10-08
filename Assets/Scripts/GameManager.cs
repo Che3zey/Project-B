@@ -1,23 +1,23 @@
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using UnityEngine.UI;
 
 public class GameManager : MonoBehaviour
 {
     public static GameManager Instance;
 
-    [Header("Pause Menu UI")]
-    [Tooltip("Assign your Pause Menu Canvas here.")]
+    [Header("Pause Menu UI (optional)")]
     public GameObject pauseMenuUI;
 
-    private bool isPaused = false;
+    [HideInInspector] public bool IsPaused { get; private set; }
 
     void Awake()
     {
-        // Singleton pattern (persists between scenes)
         if (Instance == null)
         {
             Instance = this;
             DontDestroyOnLoad(gameObject);
+            SceneManager.sceneLoaded += OnSceneLoaded;
         }
         else
         {
@@ -27,49 +27,37 @@ public class GameManager : MonoBehaviour
 
     void Update()
     {
-        // Toggle pause with Escape
-        if (Input.GetKeyDown(KeyCode.Escape))
+        if (pauseMenuUI != null && Input.GetKeyDown(KeyCode.Escape))
         {
-            if (isPaused) ResumeGame();
+            if (IsPaused) ResumeGame();
             else PauseGame();
         }
     }
 
     // ============================================================
-    // 🔹 SCENE CONTROL
+    // Scene Management
     // ============================================================
-
-    /// <summary>
-    /// Loads a scene by name (must match Build Settings).
-    /// </summary>
     public void LoadScene(string sceneName)
     {
         if (!string.IsNullOrEmpty(sceneName))
         {
-            Time.timeScale = 1f; // unpause before loading
+            Time.timeScale = 1f;
             SceneManager.LoadScene(sceneName);
         }
         else
         {
-            Debug.LogWarning("⚠️ GameManager.LoadScene() called with no scene name!");
+            Debug.LogWarning("⚠️ LoadScene called with no scene name!");
         }
     }
 
-    /// <summary>
-    /// Reloads the current active scene.
-    /// </summary>
     public void RestartScene()
     {
         Time.timeScale = 1f;
         SceneManager.LoadScene(SceneManager.GetActiveScene().name);
     }
 
-    /// <summary>
-    /// Quits the game (works in builds and exits Play mode in editor).
-    /// </summary>
     public void QuitGame()
     {
-        Debug.Log("🛑 Quitting game...");
 #if UNITY_EDITOR
         UnityEditor.EditorApplication.isPlaying = false;
 #else
@@ -78,26 +66,70 @@ public class GameManager : MonoBehaviour
     }
 
     // ============================================================
-    // 🔹 PAUSE / RESUME CONTROL
+    // Pause System
     // ============================================================
-
     public void PauseGame()
     {
         if (pauseMenuUI != null)
+        {
             pauseMenuUI.SetActive(true);
-
-        Time.timeScale = 0f; // freeze gameplay
-        isPaused = true;
-        Debug.Log("⏸️ Game Paused");
+            Time.timeScale = 0f;
+            IsPaused = true;
+        }
     }
 
     public void ResumeGame()
     {
         if (pauseMenuUI != null)
+        {
             pauseMenuUI.SetActive(false);
+            Time.timeScale = 1f;
+            IsPaused = false;
+        }
+    }
 
-        Time.timeScale = 1f; // resume gameplay
-        isPaused = false;
-        Debug.Log("▶️ Game Resumed");
+    // ============================================================
+    // Scene Loaded Handler
+    // ============================================================
+    private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
+    {
+        // Reset pause menu
+        FindPauseMenuInScene();
+
+        // Hook Main Menu buttons automatically if in that scene
+        if (scene.name == "MainMenu")
+        {
+            Button[] buttons = GameObject.FindObjectsOfType<Button>();
+            foreach (Button b in buttons)
+            {
+                string btnName = b.gameObject.name.ToLower();
+                b.onClick.RemoveAllListeners(); // clear old listeners
+
+                if (btnName.Contains("start"))
+                    b.onClick.AddListener(() => LoadScene("LevelSelect"));
+                else if (btnName.Contains("credits"))
+                    b.onClick.AddListener(() => LoadScene("Credits"));
+                else if (btnName.Contains("quit"))
+                    b.onClick.AddListener(QuitGame);
+            }
+        }
+
+        // Make sure the game is not paused when loading any scene
+        IsPaused = false;
+        Time.timeScale = 1f;
+    }
+
+    private void FindPauseMenuInScene()
+    {
+        GameObject found = GameObject.FindWithTag("PauseMenu");
+        if (found != null)
+        {
+            pauseMenuUI = found;
+            pauseMenuUI.SetActive(false);
+        }
+        else
+        {
+            pauseMenuUI = null; // no pause menu in this scene
+        }
     }
 }

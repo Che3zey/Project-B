@@ -7,22 +7,26 @@ public class PlayerController : MonoBehaviour
 
     void Update()
     {
+        // Don't allow movement while paused
+        if (GameManager.Instance != null && GameManager.Instance.IsPaused)
+            return;
+
         if (Input.GetKeyDown(KeyCode.UpArrow)) TryMove(Vector2Int.up);
         if (Input.GetKeyDown(KeyCode.DownArrow)) TryMove(Vector2Int.down);
         if (Input.GetKeyDown(KeyCode.LeftArrow)) TryMove(Vector2Int.left);
         if (Input.GetKeyDown(KeyCode.RightArrow)) TryMove(Vector2Int.right);
-        
     }
 
     void TryMove(Vector2Int dir)
     {
         Vector2Int targetPos = playerPos + dir;
 
-        // Goal check
+        // Goal check FIRST (even if it's outside grid)
         if (targetPos == gridManager.goalZone)
         {
             MovePlayer(targetPos);
             Debug.Log("🏆 Player reached the goal!");
+            GameManager.Instance.LoadScene("WinScreen");
             return;
         }
 
@@ -40,13 +44,13 @@ public class PlayerController : MonoBehaviour
         else if (targetTile == TileType.RedBox || targetTile == TileType.BlueBox || targetTile == TileType.GreenBox)
         {
             Vector2Int boxTarget = targetPos + dir;
+
             if (boxTarget.x < 0 || boxTarget.x >= gridManager.width ||
                 boxTarget.y < 0 || boxTarget.y >= gridManager.height)
                 return;
 
-            if (gridManager.grid[boxTarget.x, boxTarget.y] == TileType.Empty)
+            if (gridManager.MoveBox(targetPos, boxTarget))
             {
-                gridManager.MoveBox(targetPos, boxTarget);
                 MovePlayer(targetPos);
             }
         }
@@ -58,6 +62,6 @@ public class PlayerController : MonoBehaviour
     void MovePlayer(Vector2Int newPos)
     {
         playerPos = newPos;
-        transform.position = new Vector3(newPos.x, newPos.y, 0);
+        transform.position = new Vector3(newPos.x, newPos.y, 0f);
     }
 }

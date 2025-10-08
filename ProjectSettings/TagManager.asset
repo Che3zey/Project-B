@@ -5,6 +5,10 @@ TagManager:
   serializedVersion: 3
   tags:
   - Goal
+  - PauseMenu
+  - ResumeButton
+  - LevelSelectButton
+  - QuitButton
   layers:
   - Default
   - TransparentFX
