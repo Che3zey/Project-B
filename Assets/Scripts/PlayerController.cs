@@ -11,6 +11,7 @@ public class PlayerController : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.DownArrow)) TryMove(Vector2Int.down);
         if (Input.GetKeyDown(KeyCode.LeftArrow)) TryMove(Vector2Int.left);
         if (Input.GetKeyDown(KeyCode.RightArrow)) TryMove(Vector2Int.right);
+        
     }
 
     void TryMove(Vector2Int dir)

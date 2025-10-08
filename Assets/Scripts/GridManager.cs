@@ -473,4 +473,24 @@ public class GridManager : MonoBehaviour
                 }
             }
     }
+    public void RestartLevel()
+    {
+        Debug.Log("🔁 Restarting level...");
+
+        // Destroy existing player & goal if they exist
+        PlayerController existingPlayer = FindObjectOfType<PlayerController>();
+        if (existingPlayer != null)
+            Destroy(existingPlayer.gameObject);
+
+        GameObject existingGoal = GameObject.FindWithTag("Goal");
+        if (existingGoal != null)
+            Destroy(existingGoal);
+
+        // Clear current grid state
+        ClearAllBoxesAndObjects();
+
+        // Regenerate a new level
+        GenerateLevel();
+    }
+
 }
