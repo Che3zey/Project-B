@@ -107,10 +107,8 @@ public class GridManager : MonoBehaviour
             ClearAllBoxesOnly();
 
             List<Vector2Int> path = GenerateJaggedPath(playerSpawn, goalZone);
-
             int clusterCount = Random.Range(minClusters, maxClusters + 1);
             PlaceClustersAlongPath(path, clusterCount);
-
             PlaceFillerBoxes(path);
 
             if (AtLeastOnePushableBoxExists() && !AllBoxesOnEdges())
@@ -124,16 +122,16 @@ public class GridManager : MonoBehaviour
 
         AddBorderBoxes();
         BlockGoalAccess();
-
-        CameraController camController = Camera.main?.GetComponent<CameraController>();
+        CameraController camController = Camera.main.GetComponent<CameraController>();
         if (camController != null)
+        {
             camController.FocusOnGrid(width, height);
+        }       
     }
 
     private void GenerateOutcrops()
     {
         bool vertical = Random.value > 0.5f;
-
         if (vertical)
         {
             int playerY = Random.Range(0, height);
@@ -177,23 +175,28 @@ public class GridManager : MonoBehaviour
         grid[pos.x, pos.y] = type;
     }
 
-    // Used for matches only
+    // Called when a box should be removed with animation (e.g., match-3)
     public void RemoveBox(Vector2Int pos)
     {
-        if (boxDict.ContainsKey(pos))
-        {
-            GameObject box = boxDict[pos];
-            Coroutine c = StartCoroutine(ShatterAndFadeBox(box, pos));
-            activeShatters.Add(c);
-        }
+        if (!boxDict.ContainsKey(pos)) return;
+
+        GameObject box = boxDict[pos];
+
+        // Mark the tile empty immediately so logic sees it as gone
         grid[pos.x, pos.y] = TileType.Empty;
+
+        // Start animation
+        Coroutine c = StartCoroutine(ShatterAndFadeBox(box, pos));
+        activeShatters.Add(c);
     }
 
     private System.Collections.IEnumerator ShatterAndFadeBox(GameObject box, Vector2Int pos)
     {
         if (box == null) yield break;
 
-        SpriteRenderer sr = box.GetComponent<SpriteRenderer>() ?? box.GetComponentInChildren<SpriteRenderer>();
+        SpriteRenderer sr = box.GetComponent<SpriteRenderer>();
+        if (sr == null)
+            sr = box.GetComponentInChildren<SpriteRenderer>();
         if (sr == null) yield break;
 
         Vector3 startScale = box.transform.localScale;
@@ -212,43 +215,42 @@ public class GridManager : MonoBehaviour
             yield return null;
         }
 
+        // Remove from dictionary and destroy
         if (boxDict.ContainsKey(pos))
             boxDict.Remove(pos);
 
         Destroy(box);
-        activeShatters.RemoveAll(x => x == null);
+
+        // Cleanup coroutine reference
+        activeShatters.RemoveAll(c => c == null);
     }
 
-    // Instant destruction for restart
+    // Instantly destroy all boxes (used for restart)
     private void DestroyAllBoxesInstantly()
     {
-        if (boxDict == null) return;
-
         foreach (var kvp in boxDict)
         {
             if (kvp.Value != null)
                 Destroy(kvp.Value);
         }
-
         boxDict.Clear();
+        activeShatters.Clear();
 
+        // Mark grid empty
         for (int x = 0; x < width; x++)
             for (int y = 0; y < height; y++)
                 grid[x, y] = TileType.Empty;
-
-        activeShatters.Clear();
     }
 
     public void ClearAllBoxesOnly()
     {
-        if (boxDict == null) return;
         foreach (var kvp in new Dictionary<Vector2Int, GameObject>(boxDict))
             RemoveBox(kvp.Key);
     }
 
     public void ClearAllBoxesAndObjects()
     {
-        ClearAllBoxesOnly();
+        DestroyAllBoxesInstantly();
 
         if (tileParent != null)
         {
@@ -265,7 +267,8 @@ public class GridManager : MonoBehaviour
 
     public bool MoveBox(Vector2Int from, Vector2Int to)
     {
-        if (!boxDict.ContainsKey(from) || !IsInsideGrid(to) || !IsEmpty(to)) return false;
+        if (!boxDict.ContainsKey(from)) return false;
+        if (!IsInsideGrid(to) || !IsEmpty(to)) return false;
 
         GameObject box = boxDict[from];
         TileType type = grid[from.x, from.y];
@@ -277,7 +280,6 @@ public class GridManager : MonoBehaviour
         grid[to.x, to.y] = type;
 
         StartCoroutine(AnimateBoxMove(box, to));
-
         return true;
     }
 
@@ -286,12 +288,9 @@ public class GridManager : MonoBehaviour
         Vector3 startPos = box.transform.position;
         Vector3 endPos = new Vector3(target.x, target.y, 0f);
         float duration = 0.15f;
-        float overshoot = 0.15f;
-
-        Vector3 direction = (endPos - startPos).normalized;
-        Vector3 overshootPos = endPos + direction * overshoot;
-
+        Vector3 overshootPos = endPos + (endPos - startPos).normalized * 0.15f;
         float elapsed = 0f;
+
         Vector3 originalScale = Vector3.one;
         Vector3 squashScale = new Vector3(1.1f, 0.9f, 1f);
 
@@ -322,73 +321,28 @@ public class GridManager : MonoBehaviour
     }
 
     // --------------------------------------------------------------------
-    // PATH & CLUSTERS
+    // LEVEL RESTART
     // --------------------------------------------------------------------
-    private List<Vector2Int> GenerateJaggedPath(Vector2Int start, Vector2Int end)
+    public void RestartLevel()
     {
-        List<Vector2Int> path = new List<Vector2Int>();
-        Vector2Int cur = new Vector2Int(Mathf.Clamp(start.x, 0, width - 1), Mathf.Clamp(start.y, 0, height - 1));
-        Vector2Int target = new Vector2Int(Mathf.Clamp(end.x, 0, width - 1), Mathf.Clamp(end.y, 0, height - 1));
-        path.Add(cur);
+        // Immediately destroy all boxes without animation
+        DestroyAllBoxesInstantly();
 
-        int twists = Random.Range(5, 9);
-        for (int i = 0; i < twists; i++)
-        {
-            Vector2Int dir = Random.value > 0.5f ? Vector2Int.right : Vector2Int.up;
-            if (Random.value > 0.5f) dir *= -1;
+        // Destroy player
+        PlayerController existingPlayer = FindObjectOfType<PlayerController>();
+        if (existingPlayer != null)
+            Destroy(existingPlayer.gameObject);
 
-            int steps = Random.Range(2, 4);
-            for (int s = 0; s < steps; s++)
-            {
-                cur += dir;
-                cur.x = Mathf.Clamp(cur.x, 0, width - 1);
-                cur.y = Mathf.Clamp(cur.y, 0, height - 1);
-                if (!path.Contains(cur)) path.Add(cur);
-                if (cur == target) return path;
-            }
-        }
-        path.Add(target);
-        return path;
-    }
+        // Destroy goal
+        GameObject existingGoal = GameObject.FindWithTag("Goal");
+        if (existingGoal != null)
+            Destroy(existingGoal);
 
-    private void PlaceClustersAlongPath(List<Vector2Int> path, int clusterCount)
-    {
-        ShuffleList(path);
-        for (int i = 0; i < clusterCount; i++)
-        {
-            if (i >= path.Count) break;
-            Vector2Int center = path[i];
-            int clusterSize = Random.Range(3, 5);
+        // Clear tiles
+        ClearAllBoxesAndObjects();
 
-            for (int j = 0; j < clusterSize; j++)
-            {
-                Vector2Int offset = new Vector2Int(Random.Range(-1, 2), Random.Range(-1, 2));
-                Vector2Int pos = center + offset;
-                if (IsInsideGrid(pos) && IsEmpty(pos) && Vector2Int.Distance(pos, playerSpawn) > safeRadius)
-                {
-                    TileType type = GetRandomBoxTypeAvoidMatches(pos);
-                    GameObject prefab = GetPrefabForType(type);
-                    GameObject box = Instantiate(prefab, new Vector3(pos.x, pos.y, 0), Quaternion.identity);
-                    AddBox(pos, box, type);
-                }
-            }
-        }
-    }
-
-    private void PlaceFillerBoxes(List<Vector2Int> path)
-    {
-        for (int x = 1; x < width - 1; x++)
-            for (int y = 1; y < height - 1; y++)
-            {
-                Vector2Int pos = new Vector2Int(x, y);
-                if (IsEmpty(pos) && Random.value < fillerDensity && Vector2Int.Distance(pos, playerSpawn) > safeRadius)
-                {
-                    TileType type = GetRandomBoxTypeAvoidMatches(pos);
-                    GameObject prefab = GetPrefabForType(type);
-                    GameObject box = Instantiate(prefab, new Vector3(pos.x, pos.y, 0), Quaternion.identity);
-                    AddBox(pos, box, type);
-                }
-            }
+        // Generate fresh level
+        GenerateLevel();
     }
 
     // --------------------------------------------------------------------
@@ -484,21 +438,25 @@ public class GridManager : MonoBehaviour
 
     private GameObject GetPrefabForType(TileType type)
     {
-        return type switch
+        switch (type)
         {
-            TileType.RedBox => redBoxPrefab,
-            TileType.BlueBox => blueBoxPrefab,
-            TileType.GreenBox => greenBoxPrefab,
-            _ => null
-        };
+            case TileType.RedBox: return redBoxPrefab;
+            case TileType.BlueBox: return blueBoxPrefab;
+            case TileType.GreenBox: return greenBoxPrefab;
+            default: return null;
+        }
     }
 
-    // --------------------------------------------------------------------
-    // PUBLIC GRID QUERIES
-    // --------------------------------------------------------------------
-    public bool IsEmpty(Vector2Int pos) => IsInsideGrid(pos) && grid[pos.x, pos.y] == TileType.Empty;
+    public bool IsEmpty(Vector2Int pos)
+    {
+        if (!IsInsideGrid(pos)) return false;
+        return grid[pos.x, pos.y] == TileType.Empty;
+    }
 
-    public bool IsInsideGrid(Vector2Int pos) => pos.x >= 0 && pos.x < width && pos.y >= 0 && pos.y < height;
+    public bool IsInsideGrid(Vector2Int pos)
+    {
+        return pos.x >= 0 && pos.x < width && pos.y >= 0 && pos.y < height;
+    }
 
     public bool AllBoxesOnEdges()
     {
@@ -526,15 +484,12 @@ public class GridManager : MonoBehaviour
         return false;
     }
 
-    // --------------------------------------------------------------------
-    // EDGE + GOAL BLOCKING
-    // --------------------------------------------------------------------
     private void AddBorderBoxes()
     {
         for (int x = 0; x < width; x++)
             for (int y = 0; y < height; y++)
             {
-                bool isEdge = x == 0 || y == 0 || x == width - 1 || y == height - 1;
+                bool isEdge = (x == 0 || y == 0 || x == width - 1 || y == height - 1);
                 Vector2Int pos = new Vector2Int(x, y);
                 if (isEdge && IsEmpty(pos) && Vector2Int.Distance(pos, playerSpawn) > safeRadius && Random.value < 0.65f)
                 {
@@ -568,34 +523,70 @@ public class GridManager : MonoBehaviour
             }
     }
 
-    // --------------------------------------------------------------------
-    // LEVEL RESTART
-    // --------------------------------------------------------------------
-    public void RestartLevel()
+    private List<Vector2Int> GenerateJaggedPath(Vector2Int start, Vector2Int end)
     {
-        Debug.Log("🔁 Restarting level immediately");
+        List<Vector2Int> path = new List<Vector2Int>();
+        Vector2Int cur = new Vector2Int(Mathf.Clamp(start.x, 0, width - 1), Mathf.Clamp(start.y, 0, height - 1));
+        Vector2Int target = new Vector2Int(Mathf.Clamp(end.x, 0, width - 1), Mathf.Clamp(end.y, 0, height - 1));
+        path.Add(cur);
 
-        // Destroy player
-        PlayerController existingPlayer = FindObjectOfType<PlayerController>();
-        if (existingPlayer != null)
-            Destroy(existingPlayer.gameObject);
-
-        // Destroy goal
-        GameObject existingGoal = GameObject.FindWithTag("Goal");
-        if (existingGoal != null)
-            Destroy(existingGoal);
-
-        // Destroy all boxes instantly
-        DestroyAllBoxesInstantly();
-
-        // Destroy tiles
-        if (tileParent != null)
+        int twists = Random.Range(5, 9);
+        for (int i = 0; i < twists; i++)
         {
-            foreach (Transform child in tileParent)
-                Destroy(child.gameObject);
-        }
+            Vector2Int dir = Random.value > 0.5f ? Vector2Int.right : Vector2Int.up;
+            if (Random.value > 0.5f) dir *= -1;
 
-        // Generate fresh level
-        GenerateLevel();
+            int steps = Random.Range(2, 4);
+            for (int s = 0; s < steps; s++)
+            {
+                cur += dir;
+                cur.x = Mathf.Clamp(cur.x, 0, width - 1);
+                cur.y = Mathf.Clamp(cur.y, 0, height - 1);
+                if (!path.Contains(cur)) path.Add(cur);
+                if (cur == target) return path;
+            }
+        }
+        path.Add(target);
+        return path;
+    }
+
+    private void PlaceClustersAlongPath(List<Vector2Int> path, int clusterCount)
+    {
+        ShuffleList(path);
+        for (int i = 0; i < clusterCount; i++)
+        {
+            if (i >= path.Count) break;
+            Vector2Int center = path[i];
+            int clusterSize = Random.Range(3, 5);
+
+            for (int j = 0; j < clusterSize; j++)
+            {
+                Vector2Int offset = new Vector2Int(Random.Range(-1, 2), Random.Range(-1, 2));
+                Vector2Int pos = center + offset;
+                if (IsInsideGrid(pos) && IsEmpty(pos) && Vector2Int.Distance(pos, playerSpawn) > safeRadius)
+                {
+                    TileType type = GetRandomBoxTypeAvoidMatches(pos);
+                    GameObject prefab = GetPrefabForType(type);
+                    GameObject box = Instantiate(prefab, new Vector3(pos.x, pos.y, 0), Quaternion.identity);
+                    AddBox(pos, box, type);
+                }
+            }
+        }
+    }
+
+    private void PlaceFillerBoxes(List<Vector2Int> path)
+    {
+        for (int x = 1; x < width - 1; x++)
+            for (int y = 1; y < height - 1; y++)
+            {
+                Vector2Int pos = new Vector2Int(x, y);
+                if (IsEmpty(pos) && Random.value < fillerDensity && Vector2Int.Distance(pos, playerSpawn) > safeRadius)
+                {
+                    TileType type = GetRandomBoxTypeAvoidMatches(pos);
+                    GameObject prefab = GetPrefabForType(type);
+                    GameObject box = Instantiate(prefab, new Vector3(pos.x, pos.y, 0), Quaternion.identity);
+                    AddBox(pos, box, type);
+                }
+            }
     }
 }

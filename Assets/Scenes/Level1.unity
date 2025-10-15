@@ -771,7 +771,7 @@ PrefabInstance:
       objectReference: {fileID: 1207358128}
     - target: {fileID: 6966804017905039637, guid: 1af9d9ab0caa75e44814aa256082a3a2, type: 3}
       propertyPath: maxClusters
-      value: 7
+      value: 5
       objectReference: {fileID: 0}
     - target: {fileID: 6966804017905039637, guid: 1af9d9ab0caa75e44814aa256082a3a2, type: 3}
       propertyPath: minClusters
@@ -787,7 +787,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 6966804017905039637, guid: 1af9d9ab0caa75e44814aa256082a3a2, type: 3}
       propertyPath: fillerDensity
-      value: 0.3
+      value: 0.168
       objectReference: {fileID: 0}
     - target: {fileID: 6966804017905039637, guid: 1af9d9ab0caa75e44814aa256082a3a2, type: 3}
       propertyPath: greenBoxCount
