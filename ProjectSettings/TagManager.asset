@@ -9,6 +9,7 @@ TagManager:
   - ResumeButton
   - LevelSelectButton
   - QuitButton
+  - Tile
   layers:
   - Default
   - TransparentFX

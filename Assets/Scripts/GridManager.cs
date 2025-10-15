@@ -33,6 +33,7 @@ public class GridManager : MonoBehaviour
 
     private Dictionary<Vector2Int, GameObject> boxDict = new Dictionary<Vector2Int, GameObject>();
     private TileType[] boxTypes = { TileType.RedBox, TileType.BlueBox, TileType.GreenBox };
+    private List<Coroutine> activeShatters = new List<Coroutine>();
 
     [Header("Generation Tuning")]
     public int minClusters = 2;
@@ -105,14 +106,11 @@ public class GridManager : MonoBehaviour
         {
             ClearAllBoxesOnly();
 
-            // Generate a jagged path to ensure the player can reach the goal
             List<Vector2Int> path = GenerateJaggedPath(playerSpawn, goalZone);
 
-            // Place clusters of boxes along the path
             int clusterCount = Random.Range(minClusters, maxClusters + 1);
             PlaceClustersAlongPath(path, clusterCount);
 
-            // Place filler boxes throughout the grid
             PlaceFillerBoxes(path);
 
             if (AtLeastOnePushableBoxExists() && !AllBoxesOnEdges())
@@ -124,9 +122,12 @@ public class GridManager : MonoBehaviour
         if (!success)
             Debug.LogWarning("Procedural generator may not fully satisfy constraints; level may be simple.");
 
-        // Add border boxes, then block the goal properly
         AddBorderBoxes();
         BlockGoalAccess();
+
+        CameraController camController = Camera.main?.GetComponent<CameraController>();
+        if (camController != null)
+            camController.FocusOnGrid(width, height);
     }
 
     private void GenerateOutcrops()
@@ -176,14 +177,66 @@ public class GridManager : MonoBehaviour
         grid[pos.x, pos.y] = type;
     }
 
+    // Used for matches only
     public void RemoveBox(Vector2Int pos)
     {
         if (boxDict.ContainsKey(pos))
         {
-            Destroy(boxDict[pos]);
-            boxDict.Remove(pos);
+            GameObject box = boxDict[pos];
+            Coroutine c = StartCoroutine(ShatterAndFadeBox(box, pos));
+            activeShatters.Add(c);
         }
         grid[pos.x, pos.y] = TileType.Empty;
+    }
+
+    private System.Collections.IEnumerator ShatterAndFadeBox(GameObject box, Vector2Int pos)
+    {
+        if (box == null) yield break;
+
+        SpriteRenderer sr = box.GetComponent<SpriteRenderer>() ?? box.GetComponentInChildren<SpriteRenderer>();
+        if (sr == null) yield break;
+
+        Vector3 startScale = box.transform.localScale;
+        Vector3 targetScale = startScale * 1.3f;
+        float duration = 0.25f;
+        float elapsed = 0f;
+
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            float t = elapsed / duration;
+
+            box.transform.localScale = Vector3.Lerp(startScale, targetScale, t);
+            sr.color = new Color(sr.color.r, sr.color.g, sr.color.b, Mathf.Lerp(1f, 0f, t));
+
+            yield return null;
+        }
+
+        if (boxDict.ContainsKey(pos))
+            boxDict.Remove(pos);
+
+        Destroy(box);
+        activeShatters.RemoveAll(x => x == null);
+    }
+
+    // Instant destruction for restart
+    private void DestroyAllBoxesInstantly()
+    {
+        if (boxDict == null) return;
+
+        foreach (var kvp in boxDict)
+        {
+            if (kvp.Value != null)
+                Destroy(kvp.Value);
+        }
+
+        boxDict.Clear();
+
+        for (int x = 0; x < width; x++)
+            for (int y = 0; y < height; y++)
+                grid[x, y] = TileType.Empty;
+
+        activeShatters.Clear();
     }
 
     public void ClearAllBoxesOnly()
@@ -196,15 +249,23 @@ public class GridManager : MonoBehaviour
     public void ClearAllBoxesAndObjects()
     {
         ClearAllBoxesOnly();
+
         if (tileParent != null)
-            foreach (Transform child in tileParent)
-                Destroy(child.gameObject);
+        {
+            List<Transform> children = new List<Transform>();
+            foreach (Transform child in tileParent) children.Add(child);
+
+            foreach (Transform child in children)
+            {
+                if (child.CompareTag("Tile"))
+                    Destroy(child.gameObject);
+            }
+        }
     }
 
     public bool MoveBox(Vector2Int from, Vector2Int to)
     {
-        if (!boxDict.ContainsKey(from)) return false;
-        if (!IsInsideGrid(to) || !IsEmpty(to)) return false;
+        if (!boxDict.ContainsKey(from) || !IsInsideGrid(to) || !IsEmpty(to)) return false;
 
         GameObject box = boxDict[from];
         TileType type = grid[from.x, from.y];
@@ -215,9 +276,49 @@ public class GridManager : MonoBehaviour
         grid[from.x, from.y] = TileType.Empty;
         grid[to.x, to.y] = type;
 
-        box.transform.position = new Vector3(to.x, to.y, 0f);
+        StartCoroutine(AnimateBoxMove(box, to));
 
         return true;
+    }
+
+    private System.Collections.IEnumerator AnimateBoxMove(GameObject box, Vector2Int target)
+    {
+        Vector3 startPos = box.transform.position;
+        Vector3 endPos = new Vector3(target.x, target.y, 0f);
+        float duration = 0.15f;
+        float overshoot = 0.15f;
+
+        Vector3 direction = (endPos - startPos).normalized;
+        Vector3 overshootPos = endPos + direction * overshoot;
+
+        float elapsed = 0f;
+        Vector3 originalScale = Vector3.one;
+        Vector3 squashScale = new Vector3(1.1f, 0.9f, 1f);
+
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            float t = elapsed / duration;
+
+            if (t < 0.7f)
+            {
+                float pushT = Mathf.SmoothStep(0f, 1f, t / 0.7f);
+                box.transform.position = Vector3.Lerp(startPos, overshootPos, pushT);
+            }
+            else
+            {
+                float reboundT = Mathf.SmoothStep(0f, 1f, (t - 0.7f) / 0.3f);
+                box.transform.position = Vector3.Lerp(overshootPos, endPos, reboundT);
+            }
+
+            float squash = Mathf.Sin(t * Mathf.PI);
+            box.transform.localScale = Vector3.Lerp(originalScale, squashScale, squash);
+
+            yield return null;
+        }
+
+        box.transform.position = endPos;
+        box.transform.localScale = originalScale;
     }
 
     // --------------------------------------------------------------------
@@ -383,28 +484,21 @@ public class GridManager : MonoBehaviour
 
     private GameObject GetPrefabForType(TileType type)
     {
-        switch (type)
+        return type switch
         {
-            case TileType.RedBox: return redBoxPrefab;
-            case TileType.BlueBox: return blueBoxPrefab;
-            case TileType.GreenBox: return greenBoxPrefab;
-            default: return null;
-        }
+            TileType.RedBox => redBoxPrefab,
+            TileType.BlueBox => blueBoxPrefab,
+            TileType.GreenBox => greenBoxPrefab,
+            _ => null
+        };
     }
 
     // --------------------------------------------------------------------
     // PUBLIC GRID QUERIES
     // --------------------------------------------------------------------
-    public bool IsEmpty(Vector2Int pos)
-    {
-        if (!IsInsideGrid(pos)) return false;
-        return grid[pos.x, pos.y] == TileType.Empty;
-    }
+    public bool IsEmpty(Vector2Int pos) => IsInsideGrid(pos) && grid[pos.x, pos.y] == TileType.Empty;
 
-    public bool IsInsideGrid(Vector2Int pos)
-    {
-        return pos.x >= 0 && pos.x < width && pos.y >= 0 && pos.y < height;
-    }
+    public bool IsInsideGrid(Vector2Int pos) => pos.x >= 0 && pos.x < width && pos.y >= 0 && pos.y < height;
 
     public bool AllBoxesOnEdges()
     {
@@ -440,7 +534,7 @@ public class GridManager : MonoBehaviour
         for (int x = 0; x < width; x++)
             for (int y = 0; y < height; y++)
             {
-                bool isEdge = (x == 0 || y == 0 || x == width - 1 || y == height - 1);
+                bool isEdge = x == 0 || y == 0 || x == width - 1 || y == height - 1;
                 Vector2Int pos = new Vector2Int(x, y);
                 if (isEdge && IsEmpty(pos) && Vector2Int.Distance(pos, playerSpawn) > safeRadius && Random.value < 0.65f)
                 {
@@ -474,19 +568,34 @@ public class GridManager : MonoBehaviour
             }
     }
 
+    // --------------------------------------------------------------------
+    // LEVEL RESTART
+    // --------------------------------------------------------------------
     public void RestartLevel()
     {
-        Debug.Log("🔁 Restarting level...");
+        Debug.Log("🔁 Restarting level immediately");
 
+        // Destroy player
         PlayerController existingPlayer = FindObjectOfType<PlayerController>();
         if (existingPlayer != null)
             Destroy(existingPlayer.gameObject);
 
+        // Destroy goal
         GameObject existingGoal = GameObject.FindWithTag("Goal");
         if (existingGoal != null)
             Destroy(existingGoal);
 
-        ClearAllBoxesAndObjects();
+        // Destroy all boxes instantly
+        DestroyAllBoxesInstantly();
+
+        // Destroy tiles
+        if (tileParent != null)
+        {
+            foreach (Transform child in tileParent)
+                Destroy(child.gameObject);
+        }
+
+        // Generate fresh level
         GenerateLevel();
     }
 }
