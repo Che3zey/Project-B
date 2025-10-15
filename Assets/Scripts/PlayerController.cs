@@ -7,10 +7,10 @@ public class PlayerController : MonoBehaviour
     public GridManager gridManager;
 
     [Header("Wobble Settings")]
-    public float moveDuration = 0.1f;   // how long the move lerp lasts
-    public float stretchAmount = 0.2f;  // how much the player stretches in movement direction
-    public float squashAmount = 0.15f;  // how much it squashes on impact
-    public float recoverDuration = 0.08f; // how fast it returns to normal
+    public float moveDuration = 0.1f;
+    public float stretchAmount = 0.2f;
+    public float squashAmount = 0.15f;
+    public float recoverDuration = 0.08f;
 
     private bool isMoving = false;
     private Vector3 originalScale;
@@ -22,7 +22,6 @@ public class PlayerController : MonoBehaviour
 
     void Update()
     {
-        // Prevent movement while paused or already moving
         if ((GameManager.Instance != null && GameManager.Instance.IsPaused) || isMoving)
             return;
 
@@ -46,32 +45,45 @@ public class PlayerController : MonoBehaviour
         }
 
         // Check bounds
-        if (targetPos.x < 0 || targetPos.x >= gridManager.width ||
-            targetPos.y < 0 || targetPos.y >= gridManager.height)
+        if (!gridManager.IsInsideGrid(targetPos))
+        {
+            gridManager.PlaySound(gridManager.invalidClip);
             return;
+        }
 
         TileType targetTile = gridManager.grid[targetPos.x, targetPos.y];
 
         if (targetTile == TileType.Empty)
         {
+            gridManager.PlaySound(gridManager.moveClip);
             StartCoroutine(MoveWithWobble(targetPos, dir));
         }
         else if (targetTile == TileType.RedBox || targetTile == TileType.BlueBox || targetTile == TileType.GreenBox)
         {
             Vector2Int boxTarget = targetPos + dir;
 
-            if (boxTarget.x < 0 || boxTarget.x >= gridManager.width ||
-                boxTarget.y < 0 || boxTarget.y >= gridManager.height)
+            if (!gridManager.IsInsideGrid(boxTarget) || !gridManager.IsEmpty(boxTarget))
+            {
+                gridManager.PlaySound(gridManager.invalidClip);
                 return;
+            }
 
             if (gridManager.MoveBox(targetPos, boxTarget))
             {
+                gridManager.PlaySound(gridManager.pushClip);
                 StartCoroutine(MoveWithWobble(targetPos, dir));
+            }
+            else
+            {
+                gridManager.PlaySound(gridManager.invalidClip);
             }
         }
 
-        // Check matches
+        // Check matches and play match sound
+        int matchesBefore = gridManager.CheckMatches().Count;
         gridManager.ClearMatches();
+        int matchesAfter = gridManager.CheckMatches().Count;
+        if (matchesBefore > 0) gridManager.PlaySound(gridManager.matchClip);
     }
 
     IEnumerator MoveWithWobble(Vector2Int newPos, Vector2Int dir)
@@ -82,7 +94,7 @@ public class PlayerController : MonoBehaviour
         Vector3 end = new Vector3(newPos.x, newPos.y, 0f);
         float elapsed = 0f;
 
-        // ---- Phase 1: stretch in direction of movement ----
+        // Stretch in direction of movement
         Vector3 stretchScale = originalScale;
         if (dir.x != 0)
             stretchScale = new Vector3(originalScale.x + stretchAmount, originalScale.y - stretchAmount, originalScale.z);
@@ -91,7 +103,7 @@ public class PlayerController : MonoBehaviour
 
         transform.localScale = stretchScale;
 
-        // ---- Phase 2: move toward target ----
+        // Move toward target
         while (elapsed < moveDuration)
         {
             elapsed += Time.deltaTime;
@@ -103,7 +115,7 @@ public class PlayerController : MonoBehaviour
         transform.position = end;
         playerPos = newPos;
 
-        // ---- Phase 3: squash (impact) ----
+        // Squash (impact)
         Vector3 squashScale = new Vector3(
             originalScale.x - squashAmount,
             originalScale.y + squashAmount,
@@ -111,7 +123,7 @@ public class PlayerController : MonoBehaviour
         );
         transform.localScale = squashScale;
 
-        // ---- Phase 4: recover to normal ----
+        // Recover to normal
         float recoverTime = 0f;
         while (recoverTime < recoverDuration)
         {

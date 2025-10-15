@@ -41,13 +41,27 @@ public class GridManager : MonoBehaviour
     [Range(0f, 0.3f)] public float fillerDensity = 0.1f;
     public int safeRadius = 1; // tiles around player spawn that stay empty
 
+    [Header("Sound Effects")]
+    public AudioClip moveClip;      // player moves onto empty tile
+    public AudioClip pushClip;      // player pushes a box
+    public AudioClip invalidClip;   // invalid move or wall
+    public AudioClip matchClip;     // match 3
+    private AudioSource audioSource;    
+
     void OnEnable() => InitializeGrid();
 
     void Start()
     {
+        if (audioSource == null)
+        {   
+            audioSource = gameObject.AddComponent<AudioSource>();
+            audioSource.playOnAwake = false;
+        }           
         width = Mathf.Clamp(width, 8, 15);
         height = Mathf.Clamp(height, 8, 15);
         GenerateLevel();
+        audioSource = gameObject.AddComponent<AudioSource>();
+        audioSource.playOnAwake = false;
     }
 
     // --------------------------------------------------------------------
@@ -394,6 +408,8 @@ public class GridManager : MonoBehaviour
         List<Vector2Int> matches = CheckMatches();
         foreach (Vector2Int pos in matches)
             RemoveBox(pos);
+        if (matches.Count > 0)
+            PlaySound(matchClip);
     }
 
     // --------------------------------------------------------------------
@@ -589,4 +605,13 @@ public class GridManager : MonoBehaviour
                 }
             }
     }
+    // --------------------------------------------------------------------
+    // AUDIO HELPERS
+    // --------------------------------------------------------------------
+    public void PlaySound(AudioClip clip)
+    {
+        if (audioSource != null && clip != null)
+            audioSource.PlayOneShot(clip);
+    }
+
 }
