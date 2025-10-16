@@ -53,6 +53,13 @@ MonoBehaviour:
   playerPrefab: {fileID: 3032474309140185513, guid: f0f050bd1dfb99a44a54acaeb9c8a3db, type: 3}
   goalPrefab: {fileID: 5394169496307292687, guid: cd9b0ad2ec83d39429e2553b18599a97, type: 3}
   tileParent: {fileID: 7404246348740176780, guid: adb876d5f0ac841409e92a8356be7090, type: 3}
-  initialBoxCount: 3
   playerSpawn: {x: 0, y: 0}
   goalZone: {x: 0, y: 0}
+  minClusters: 2
+  maxClusters: 4
+  fillerDensity: 0.1
+  safeRadius: 1
+  moveClip: {fileID: 8300000, guid: 14f8c00d79cd78e46aa39c35b4c37262, type: 3}
+  pushClip: {fileID: 8300000, guid: abfaf4dac8826924ba0bd56204f604de, type: 3}
+  invalidClip: {fileID: 8300000, guid: edbd62e0b1c924142bc269aa6899f371, type: 3}
+  matchClip: {fileID: 8300000, guid: e389ceccbad888a4cbe97dcd63b257e1, type: 3}
